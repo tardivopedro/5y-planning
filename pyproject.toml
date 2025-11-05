@@ -1,0 +1,15 @@
+[project]
+name = "five-year-planning"
+version = "0.1.0"
+description = "Ferramenta de projeção 5Y com FastAPI"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "pydantic>=1.10",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
