@@ -18,6 +18,7 @@ router = APIRouter()
 
 
 @router.post("/", response_model=UploadSummary)
+@router.post("", response_model=UploadSummary)  # Aceita tanto /upload/ quanto /upload
 async def upload_dataset(
   file: UploadFile = File(...),
   strict: bool = True
