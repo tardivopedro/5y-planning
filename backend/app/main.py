@@ -1,15 +1,42 @@
-"""FastAPI application entry point for the 5-year planning tool."""
+import logging
+
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from .api import forecast
+from app.api import api_router
+from app.core.config import get_settings
+from app.db.init_db import init_db
 
-app = FastAPI(title="5Y Planning", version="0.1.0")
+settings = get_settings()
+
+logging.basicConfig(
+  level=logging.INFO,
+  format="[%(asctime)s] %(levelname)s %(name)s: %(message)s"
+)
+
+app = FastAPI(
+  title=settings.app_name,
+  debug=settings.debug,
+  version="0.1.0"
+)
+
+app.add_middleware(
+  CORSMiddleware,
+  allow_origins=["*"],
+  allow_credentials=True,
+  allow_methods=["*"],
+  allow_headers=["*"]
+)
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+  init_db()
 
 
 @app.get("/health")
-def health_check() -> dict[str, str]:
-    """Simple health check endpoint."""
-    return {"status": "ok"}
+def healthcheck() -> dict[str, str]:
+  return {"status": "ok"}
 
 
-app.include_router(forecast.router, prefix="/forecast", tags=["forecast"])
+app.include_router(api_router)

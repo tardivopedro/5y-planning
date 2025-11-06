@@ -1,2 +1,19 @@
+.DS_Store
+.env
+
+# Backend
+backend/.env
+backend/.venv/
+backend/data/*.db
+
+# Frontend
+frontend/.env
+frontend/node_modules/
+frontend/dist/
+
+# Python cache
 __pycache__/
 *.pyc
+
+# Vite
+*.local
