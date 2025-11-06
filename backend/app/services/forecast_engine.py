@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from statistics import mean
 from typing import Any, Dict, List, Sequence, Tuple
 
-from ..schemas.core import (
+from app.schemas.core import (
     ForecastMethod,
     ForecastRequest,
     ManualGrowthFactor,

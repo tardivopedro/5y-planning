@@ -1,12 +1,12 @@
 """Schema exports for FastAPI."""
 
-from .analytics import (
+from app.schemas.analytics import (
   AggregateResponse,
   ForecastResponse as AnalyticsForecastResponse,
   SummaryResponse,
   TypeProductBaseline,
 )
-from .core import (
+from app.schemas.core import (
   ForecastMethod,
   ForecastRequest,
   ForecastResponse,
@@ -14,7 +14,7 @@ from .core import (
   PriceStrategy,
   REQUIRED_COLUMNS,
 )
-from .planning import (
+from app.schemas.planning import (
   DeleteRequest,
   DeleteResponse,
   FilterOptions,

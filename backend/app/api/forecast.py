@@ -5,7 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from ..schemas.core import ForecastRequest, ForecastResponse
+from app.schemas.core import ForecastRequest, ForecastResponse
 from ..services.forecast_engine import ForecastEngine
 
 router = APIRouter()
