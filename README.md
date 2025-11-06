@@ -7,7 +7,7 @@ Cockpit completo para planejamento comercial com projeções automáticas de cin
 - `backend/app/main.py` — inicializa a aplicação FastAPI, configura CORS, executa `init_db()` no startup e registra todos os routers (`upload`, `analytics`, `forecast`).
 - `backend/app/api/forecast.py` — mantém os endpoints originais de geração de forecast com o motor determinístico.
 - `backend/app/api/upload.py` & `backend/app/api/analytics.py` — expõem ingestão da base histórica e consultas agregadas simuladas para o cockpit.
-- `backend/app/services/forecast_engine.py` — motor principal com CAGR, regressão e crescimento manual; compartilha esquemas em `backend/app/schemas`.
+- `backend/app/services/forecast_engine.py` — motor principal com CAGR, regressão e crescimento manual; compartilha esquemas em `backend/app/schemas/core.py`.
 - `frontend/src/App.tsx` — orquestra a navegação entre módulos (Upload, Forecast, Edição, Pricing, Reporting).
 - `frontend/src/modules/*` — implementações modulares da UI mockada, utilizando Zustand para estado global (`useForecastStore`).
 - `docs/architecture.md` — visão arquitetural detalhada e roadmap técnico.

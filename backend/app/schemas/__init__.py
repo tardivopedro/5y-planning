@@ -1,6 +1,19 @@
 """Schema exports for FastAPI."""
 
-from .analytics import AggregateResponse, ForecastResponse, SummaryResponse, TypeProductBaseline
+from .analytics import (
+  AggregateResponse,
+  ForecastResponse as AnalyticsForecastResponse,
+  SummaryResponse,
+  TypeProductBaseline,
+)
+from .core import (
+  ForecastMethod,
+  ForecastRequest,
+  ForecastResponse,
+  ManualGrowthFactor,
+  PriceStrategy,
+  REQUIRED_COLUMNS,
+)
 from .planning import (
   DeleteRequest,
   DeleteResponse,
@@ -11,9 +24,15 @@ from .planning import (
 
 __all__ = [
   "AggregateResponse",
-  "ForecastResponse",
+  "AnalyticsForecastResponse",
   "SummaryResponse",
   "TypeProductBaseline",
+  "ForecastMethod",
+  "ForecastRequest",
+  "ForecastResponse",
+  "ManualGrowthFactor",
+  "PriceStrategy",
+  "REQUIRED_COLUMNS",
   "DeleteRequest",
   "DeleteResponse",
   "FilterOptions",
