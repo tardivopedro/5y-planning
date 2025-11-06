@@ -123,11 +123,19 @@ npm run dev
 
 **Para testar o frontend conectado ao backend no Railway:**
 
-1. **Configure o `.env` do frontend:**
+1. **Configure o `.env` do frontend (para desenvolvimento local):**
    ```env
    VITE_API_URL=https://5y-planning-production.up.railway.app
    VITE_DELETE_TOKEN=DELETE-ALL
    ```
+   
+   **OU configure no Vercel (para produção):**
+   - No painel do Vercel, vá até o projeto
+   - Clique em "Settings" > "Environment Variables"
+   - Adicione:
+     - `VITE_API_URL` = `https://5y-planning-production.up.railway.app`
+     - `VITE_DELETE_TOKEN` = `DELETE-ALL`
+   - **IMPORTANTE:** Certifique-se de incluir o protocolo `https://` na URL
 
 2. **Inicie o frontend:**
    ```bash

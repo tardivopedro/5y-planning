@@ -30,7 +30,7 @@ export async function uploadDataset({
 
     const query = strict ? "?strict=true" : "?strict=false";
     const xhr = new XMLHttpRequest();
-    xhr.open("POST", getApiUrl(`/upload/${query}`));
+    xhr.open("POST", getApiUrl(`/upload${query}`));
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable && onProgress) {

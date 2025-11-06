@@ -1,7 +1,29 @@
 const apiBaseUrl = import.meta.env.VITE_API_URL ?? "http://127.0.0.1:8000";
 
+function normalizeApiUrl(url: string): string {
+  // Remove trailing slash
+  url = url.trim().replace(/\/$/, "");
+  
+  // Se não começar com http:// ou https://, adiciona https://
+  if (!url.match(/^https?:\/\//)) {
+    // Se parece ser um domínio (contém ponto), assume https
+    if (url.includes(".")) {
+      url = `https://${url}`;
+    } else {
+      // Caso contrário, assume http para localhost
+      url = `http://${url}`;
+    }
+  }
+  
+  return url;
+}
+
+const normalizedApiBaseUrl = normalizeApiUrl(apiBaseUrl);
+
 export function getApiUrl(path: string): string {
-  return `${apiBaseUrl.replace(/\/$/, "")}${path.startsWith("/") ? path : `/${path}`}`;
+  // Remove leading slash from path if present, we'll add it
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  return `${normalizedApiBaseUrl}${cleanPath}`;
 }
 
 export async function httpRequest<T>(
