@@ -33,10 +33,15 @@ def _normalize_url(url: str) -> str:
   if driver.startswith("postgresql") and host:
     is_public_host = host.endswith(RAILWAY_PUBLIC_HOST_SUFFIXES)
 
+    if driver == "postgresql":
+      # Force psycopg (psycopg3) instead of the legacy psycopg2 driver.
+      parsed = parsed.set(drivername="postgresql+psycopg")
+    elif driver == "postgresql+psycopg2":
+      parsed = parsed.set(drivername="postgresql+psycopg")
+
     if is_public_host and not parsed.query.get("sslmode"):
       parsed = parsed.set(query={**parsed.query, "sslmode": "require"})
 
-    # psycopg prefers explicit driver; keep canonical string representation.
     return parsed.render_as_string(hide_password=False)
 
   return url
