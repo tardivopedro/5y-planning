@@ -56,6 +56,32 @@ docker run --rm -p 8000:8000 \
      ```
 3. Reinstale dependências (já incluímos `psycopg[binary]`) e reinicie o backend; as tabelas são criadas automaticamente.
 
+### Troubleshooting: Problemas de Conexão com PostgreSQL no Railway
+
+Se você ver o erro `Could not resolve database host for postgresql+psycopg://postgres:***@postgres.railway.internal:5432/railway`, isso significa que o host do banco não está sendo resolvido. Isso geralmente acontece quando:
+
+1. **O serviço PostgreSQL não está linkado ao serviço da aplicação:**
+   - No painel do Railway, vá até o serviço da sua aplicação
+   - Clique em "Variables" ou "Settings"
+   - Verifique se há um serviço PostgreSQL linkado
+   - Se não houver, adicione um serviço PostgreSQL e faça o link
+
+2. **O nome do serviço PostgreSQL é diferente de "postgres":**
+   - O host interno do Railway segue o padrão `[nome-do-servico].railway.internal`
+   - Se seu serviço PostgreSQL se chama algo diferente (ex: `postgres-db`), o host seria `postgres-db.railway.internal`
+   - Verifique o nome do serviço no painel do Railway e ajuste a `DATABASE_URL` se necessário
+
+3. **Variáveis de ambiente não estão configuradas:**
+   - O Railway normalmente cria automaticamente `DATABASE_URL` quando você linka um serviço PostgreSQL
+   - Verifique em "Variables" se `DATABASE_URL` ou `POSTGRES_URL` está presente
+   - Se não estiver, você pode configurá-la manualmente com a connection string correta
+
+4. **Usando variáveis individuais:**
+   - O código também suporta variáveis individuais: `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`
+   - Essas podem ser configuradas manualmente se a `DATABASE_URL` não estiver disponível
+
+**Nota:** Se nenhuma conexão PostgreSQL for possível, o aplicativo fará fallback automático para SQLite local (`sqlite:///./data/forecast.db`), mas isso não é recomendado para produção.
+
 ### Limpeza rápida do banco
 
 O SQLite local (`backend/data/forecast.db`) é descartável. Para recomeçar, remova-o e reinicie o app. Ao usar Postgres/Supabase, esse arquivo deixa de ser necessário.
