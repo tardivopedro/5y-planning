@@ -94,6 +94,22 @@ O SQLite local (`backend/data/forecast.db`) é descartável. Para recomeçar, re
 
 ## Frontend (React + Vite)
 
+### Configuração para Desenvolvimento Local
+
+1. **Crie o arquivo `frontend/.env`** com as seguintes variáveis:
+
+```env
+# Para testar com backend local
+VITE_API_URL=http://127.0.0.1:8000
+
+# Para testar com backend no Railway (substitua pela URL do seu serviço)
+# VITE_API_URL=https://5y-planning-production.up.railway.app
+
+VITE_DELETE_TOKEN=DELETE-ALL
+```
+
+2. **Instale as dependências e inicie o servidor:**
+
 ```bash
 cd frontend
 npm install
@@ -101,12 +117,60 @@ npm run dev
 ```
 
 - Servidor local na porta `5173`.
-- Configure `frontend/.env` com:
-  ```
-  VITE_API_URL=http://127.0.0.1:8000
-  VITE_DELETE_TOKEN=DELETE-ALL
-  ```
-- O mock de estado (`useForecastStore`) mantém dados de upload, forecasts e ajustes percentuais para navegação entre níveis (Diretor → SKU).
+- Acesse `http://127.0.0.1:5173` no navegador
+
+### Testando Conexão com Backend no Railway
+
+**Para testar o frontend conectado ao backend no Railway:**
+
+1. **Configure o `.env` do frontend:**
+   ```env
+   VITE_API_URL=https://5y-planning-production.up.railway.app
+   VITE_DELETE_TOKEN=DELETE-ALL
+   ```
+
+2. **Inicie o frontend:**
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+
+3. **Teste o upload de dados:**
+   - Acesse `http://127.0.0.1:5173`
+   - Vá para a aba "Upload"
+   - Faça upload de um arquivo Excel/CSV
+   - Verifique se o upload foi bem-sucedido
+
+4. **Verificar se os dados estão no banco PostgreSQL:**
+   
+   **Opção A: Via logs do Railway**
+   - No painel do Railway, vá até os logs do serviço da aplicação
+   - Procure por mensagens como "Successfully connected to database"
+   - Ao fazer upload, você verá logs de inserção/atualização
+   
+   **Opção B: Via API diretamente**
+   ```bash
+   # Verificar se o backend está respondendo
+   curl https://5y-planning-production.up.railway.app/health
+   
+   # Listar registros (primeiros 10)
+   curl https://5y-planning-production.up.railway.app/upload/records?limit=10
+   ```
+   
+   **Opção C: Via Railway PostgreSQL (se tiver acesso SQL)**
+   - No painel do Railway, clique no serviço PostgreSQL
+   - Vá em "Data" ou "Query"
+   - Execute: `SELECT COUNT(*) FROM planningrecord;`
+   - Ou: `SELECT * FROM planningrecord LIMIT 10;`
+
+5. **Verificar no frontend:**
+   - Após upload, vá para a aba "Forecast" ou "Analytics"
+   - Os dados devem aparecer automaticamente
+   - Verifique se os filtros e agregações estão funcionando
+
+### Mock de Estado (Desenvolvimento)
+
+O mock de estado (`useForecastStore`) mantém dados de upload, forecasts e ajustes percentuais para navegação entre níveis (Diretor → SKU). Quando conectado ao backend real, os dados vêm do PostgreSQL via API.
 
 ## Testes
 
