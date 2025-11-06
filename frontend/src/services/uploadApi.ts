@@ -28,10 +28,10 @@ export async function uploadDataset({
     const formData = new FormData();
     formData.append("file", file);
 
-    const query = strict ? "?strict=true" : "?strict=false";
+    const query = strict ? "strict=true" : "strict=false";
     const xhr = new XMLHttpRequest();
     // Usa /upload/ com barra para evitar redirect do Railway
-    xhr.open("POST", getApiUrl(`/upload/${query}`));
+    xhr.open("POST", getApiUrl(`/upload/?${query}`));
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable && onProgress) {
