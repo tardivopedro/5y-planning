@@ -27,6 +27,20 @@ uvicorn app.main:app --reload
 - O endpoint de saúde responde em `http://127.0.0.1:8000/health`.
 - Swagger disponível em `http://127.0.0.1:8000/docs` com rotas de upload, analytics e forecast.
 
+### Executando com Docker (Railway ou local)
+
+```bash
+docker build -t 5y-planning-backend .
+docker run --rm -p 8000:8000 \
+  -e DATABASE_URL=postgresql+psycopg://... \
+  -e APP_NAME=5y-planning-api \
+  -e DELETE_CONFIRMATION_TEXT=DELETE-ALL \
+  5y-planning-backend
+```
+
+- O Dockerfile já fixa o Python 3.12 e lê a porta da variável `PORT` (Railway fornece automaticamente).
+- Em ambiente Railway, selecione “Dockerfile” como estratégia de build/start e mantenha o comando padrão.
+
 ### Supabase/PostgreSQL
 
 1. Gere o connection string completo no Supabase.
