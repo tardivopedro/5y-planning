@@ -6,6 +6,7 @@ from typing import Iterator
 from sqlalchemy import create_engine, text
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.engine import make_url
 from sqlmodel import Session
 
 from app.core.config import get_settings
@@ -15,6 +16,30 @@ settings = get_settings()
 logger = logging.getLogger(__name__)
 
 DEFAULT_SQLITE_URL = "sqlite:///./data/forecast.db"
+RAILWAY_PUBLIC_HOST_SUFFIXES = (".railway.app", ".proxy.rlwy.net")
+RAILWAY_INTERNAL_HOST = "postgres.railway.internal"
+
+
+def _normalize_url(url: str) -> str:
+  """Ensure Railway public hosts enforce SSL and return the canonical string."""
+  try:
+    parsed = make_url(url)
+  except Exception:
+    return url
+
+  driver = parsed.drivername or ""
+  host = parsed.host or ""
+
+  if driver.startswith("postgresql") and host:
+    is_public_host = host.endswith(RAILWAY_PUBLIC_HOST_SUFFIXES)
+
+    if is_public_host and not parsed.query.get("sslmode"):
+      parsed = parsed.set(query={**parsed.query, "sslmode": "require"})
+
+    # psycopg prefers explicit driver; keep canonical string representation.
+    return parsed.render_as_string(hide_password=False)
+
+  return url
 
 
 def _build_engine(url: str):
@@ -33,7 +58,7 @@ def _assert_connectable(engine):
 
 def _initialize_engine():
   """Create the primary engine, falling back to SQLite when a private host isn't reachable."""
-  primary_url = settings.database_url or DEFAULT_SQLITE_URL
+  primary_url = _normalize_url(settings.database_url or DEFAULT_SQLITE_URL)
   engine = _build_engine(primary_url)
   try:
     _assert_connectable(engine)

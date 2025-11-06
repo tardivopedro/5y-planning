@@ -45,10 +45,15 @@ docker run --rm -p 8000:8000 \
 ### Supabase/PostgreSQL
 
 1. Gere o connection string completo no Supabase.
-2. Configure `DATABASE_URL` em `backend/.env`, ex.:
-   ```env
-   DATABASE_URL=postgresql+psycopg://usuario:senha@host:porta/postgres?options=-csearch_path%3Dpublic
-   ```
+2. Configure `DATABASE_URL` em `backend/.env`, conforme o ambiente:
+   - **Desenvolvimento local (via proxy Railway):**
+     ```env
+     DATABASE_URL=postgresql+psycopg://postgres:<senha>@shortline.proxy.rlwy.net:10834/railway?sslmode=require
+     ```
+   - **Serviço FastAPI hospedado na Railway:** use o host interno
+     ```env
+     DATABASE_URL=postgresql+psycopg://postgres:<senha>@postgres.railway.internal:5432/railway
+     ```
 3. Reinstale dependências (já incluímos `psycopg[binary]`) e reinicie o backend; as tabelas são criadas automaticamente.
 
 ### Limpeza rápida do banco
