@@ -19,6 +19,7 @@ Cockpit completo para planejamento comercial com projeções automáticas de cin
 cd backend
 python -m venv .venv
 source .venv/bin/activate  # ou .venv\Scripts\activate no Windows
+cp .env.example .env       # ajuste DATABASE_URL conforme necessário
 pip install -r requirements.txt
 uvicorn app.main:app --reload
 ```
