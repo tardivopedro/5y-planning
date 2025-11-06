@@ -45,15 +45,21 @@ docker run --rm -p 8000:8000 \
 ### Supabase/PostgreSQL
 
 1. Gere o connection string completo no Supabase.
-2. Configure `DATABASE_URL` em `backend/.env`, conforme o ambiente:
+2. Configure `DATABASE_URL` em `backend/.env` ou nas variáveis de ambiente do Railway, conforme o ambiente:
    - **Desenvolvimento local (via proxy Railway):**
      ```env
-     DATABASE_URL=postgresql+psycopg://postgres:<senha>@shortline.proxy.rlwy.net:10834/railway?sslmode=require
+     DATABASE_URL=postgresql://postgres:<senha>@[host].proxy.rlwy.net:[porta]/railway
      ```
-   - **Serviço FastAPI hospedado na Railway:** use o host interno
-     ```env
-     DATABASE_URL=postgresql+psycopg://postgres:<senha>@postgres.railway.internal:5432/railway
-     ```
+   - **Serviço FastAPI hospedado na Railway:**
+     - **Se os serviços estão linkados:** use o host interno (preferencial)
+       ```env
+       DATABASE_URL=postgresql://postgres:<senha>@postgres.railway.internal:5432/railway
+       ```
+     - **Se o host interno não resolve:** use a URL pública (proxy)
+       ```env
+       DATABASE_URL=postgresql://postgres:<senha>@[host].proxy.rlwy.net:[porta]/railway
+       ```
+     - **Nota:** O código tenta automaticamente a URL pública se a interna falhar
 3. Reinstale dependências (já incluímos `psycopg[binary]`) e reinicie o backend; as tabelas são criadas automaticamente.
 
 ### Troubleshooting: Problemas de Conexão com PostgreSQL no Railway

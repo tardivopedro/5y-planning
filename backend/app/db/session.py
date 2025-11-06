@@ -100,7 +100,9 @@ def _assert_connectable(engine):
 
 
 def _initialize_engine():
-  """Create the primary engine, falling back to SQLite when a private host isn't reachable."""
+  """Create the primary engine, falling back to public URL or SQLite when private host isn't reachable."""
+  import os
+  
   primary_url = _normalize_url(settings.database_url or DEFAULT_SQLITE_URL)
   engine = _build_engine(primary_url)
   try:
@@ -112,15 +114,73 @@ def _initialize_engine():
     if ("name or service not known" in message or "could not translate host name" in message) and not primary_url.startswith("sqlite"):
       sanitized_url = engine.url.render_as_string(hide_password=True)
       logger.warning(
-        "Could not resolve database host for %s; falling back to local SQLite at %s.",
-        sanitized_url,
-        DEFAULT_SQLITE_URL
+        "Could not resolve database host for %s; trying alternatives...",
+        sanitized_url
       )
-      logger.warning(
-        "Tip: Verifique se o serviço PostgreSQL está linkado corretamente no Railway. "
-        "No painel do Railway, vá em 'Variables' e verifique se DATABASE_URL ou POSTGRES_URL está configurada. "
-        "Se o serviço PostgreSQL tem outro nome (não 'postgres'), o host seria '[nome-do-servico].railway.internal'."
-      )
+      
+      # Tenta usar URL pública se disponível (Railway fornece POSTGRES_URL_PUBLIC ou similar)
+      public_url = None
+      if os.getenv("POSTGRES_URL_PUBLIC"):
+        public_url = _normalize_url(os.getenv("POSTGRES_URL_PUBLIC"))
+      elif os.getenv("DATABASE_URL_PUBLIC"):
+        public_url = _normalize_url(os.getenv("DATABASE_URL_PUBLIC"))
+      else:
+        # Tenta construir URL pública a partir da URL interna se for .railway.internal
+        try:
+          parsed = make_url(primary_url)
+          if parsed.host and ".railway.internal" in parsed.host:
+            # Railway pode fornecer variáveis com host público
+            public_host = os.getenv("POSTGRES_HOSTNAME_PUBLIC") or os.getenv("PGHOST_PUBLIC")
+            public_port = os.getenv("POSTGRES_PORT_PUBLIC") or os.getenv("PGPORT_PUBLIC")
+            if public_host and public_port:
+              public_url = f"{parsed.drivername}://{parsed.username}:{parsed.password}@{public_host}:{public_port}/{parsed.database}"
+              public_url = _normalize_url(public_url)
+        except Exception:
+          pass
+      
+      # Tenta URL pública se disponível
+      if public_url and public_url != primary_url:
+        logger.info("Attempting to connect using public URL...")
+        try:
+          public_engine = _build_engine(public_url)
+          _assert_connectable(public_engine)
+          logger.info("Successfully connected to database using public URL at %s", 
+                     public_engine.url.render_as_string(hide_password=True))
+          return public_engine
+        except Exception as pub_exc:
+          logger.warning("Public URL also failed: %s", str(pub_exc))
+      
+      # Diagnóstico detalhado
+      logger.error("=" * 60)
+      logger.error("DIAGNÓSTICO DE CONEXÃO POSTGRESQL")
+      logger.error("=" * 60)
+      logger.error("A URL interna não pode ser resolvida.")
+      logger.error("URL tentada: %s", sanitized_url)
+      if public_url:
+        logger.error("URL pública tentada: %s", public_url.split("@")[1] if "@" in public_url else public_url)
+      logger.error("")
+      logger.error("VARIÁVEIS DE AMBIENTE DETECTADAS:")
+      db_vars = {
+        "DATABASE_URL": os.getenv("DATABASE_URL", "NÃO DEFINIDA"),
+        "POSTGRES_URL": os.getenv("POSTGRES_URL", "NÃO DEFINIDA"),
+        "POSTGRES_URL_PUBLIC": os.getenv("POSTGRES_URL_PUBLIC", "NÃO DEFINIDA"),
+        "PGHOST": os.getenv("PGHOST", "NÃO DEFINIDA"),
+      }
+      for var_name, var_value in db_vars.items():
+        if var_value != "NÃO DEFINIDA" and var_value:
+          if "@" in var_value:
+            masked = var_value.split("@")[0].split(":")[0] + ":***@" + "@".join(var_value.split("@")[1:])
+            logger.error("  %s=%s", var_name, masked)
+          else:
+            logger.error("  %s=%s", var_name, var_value)
+      logger.error("")
+      logger.error("SOLUÇÃO: Use a URL pública (proxy) se os serviços estão no mesmo espaço:")
+      logger.error("Configure DATABASE_URL com: postgresql://postgres:senha@[host].proxy.rlwy.net:[porta]/railway")
+      logger.error("=" * 60)
+      
+      # Fallback para SQLite
+      logger.warning("Falling back to local SQLite at %s", DEFAULT_SQLITE_URL)
+      logger.warning("⚠️ Isso não é recomendado para produção!")
       fallback_engine = _build_engine(DEFAULT_SQLITE_URL)
       _assert_connectable(fallback_engine)
       return fallback_engine
