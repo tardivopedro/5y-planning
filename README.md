@@ -45,21 +45,17 @@ docker run --rm -p 8000:8000 \
 ### Supabase/PostgreSQL
 
 1. Gere o connection string completo no Supabase.
-2. Configure `DATABASE_URL` em `backend/.env` ou nas variáveis de ambiente do Railway, conforme o ambiente:
-   - **Desenvolvimento local (via proxy Railway):**
+2. Configure `backend/.env` conforme a prioridade desejada:
+   - `DATABASE_URL_LOCAL` → primeiro candidato quando você está rodando o app no notebook (ex.: Postgres via Docker em `127.0.0.1`).
+   - `DATABASE_URL` → valor padrão do ambiente atual (na Railway continue usando o host interno `postgres.railway.internal`).
+   - `DATABASE_URL_REMOTE` → fallback remoto (host público `*.proxy.rlwy.net` gerado pela Railway).
+   - Se nenhum estiver online, o backend cai automaticamente em `sqlite:///./data/forecast.db`.
+   - Exemplo prático:
      ```env
-     DATABASE_URL=postgresql://postgres:<senha>@[host].proxy.rlwy.net:[porta]/railway
+     DATABASE_URL_LOCAL=postgresql+psycopg://postgres:senha@127.0.0.1:5432/forecast
+     DATABASE_URL=postgresql+psycopg://postgres:<senha>@postgres.railway.internal:5432/railway
+     DATABASE_URL_REMOTE=postgresql+psycopg://postgres:<senha>@shortline.proxy.rlwy.net:10834/railway?sslmode=require
      ```
-   - **Serviço FastAPI hospedado na Railway:**
-     - **Se os serviços estão linkados:** use o host interno (preferencial)
-       ```env
-       DATABASE_URL=postgresql://postgres:<senha>@postgres.railway.internal:5432/railway
-       ```
-     - **Se o host interno não resolve:** use a URL pública (proxy)
-       ```env
-       DATABASE_URL=postgresql://postgres:<senha>@[host].proxy.rlwy.net:[porta]/railway
-       ```
-     - **Nota:** O código tenta automaticamente a URL pública se a interna falhar
 3. Reinstale dependências (já incluímos `psycopg[binary]`) e reinicie o backend; as tabelas são criadas automaticamente.
 
 ### Troubleshooting: Problemas de Conexão com PostgreSQL no Railway
@@ -107,6 +103,8 @@ VITE_API_URL=http://127.0.0.1:8000
 
 VITE_DELETE_TOKEN=DELETE-ALL
 ```
+
+> **Dica:** se nenhum `VITE_API_URL` for informado, o frontend agora tenta automaticamente `http://127.0.0.1:8000/health`. Se o backend local não responder em ~1,2 s, ele faz fallback para o backend publicado em Railway (`https://5y-planning-production.up.railway.app`). Mantenha a variável somente quando quiser forçar um endpoint específico.
 
 2. **Instale as dependências e inicie o servidor:**
 

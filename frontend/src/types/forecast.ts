@@ -34,6 +34,10 @@ export interface SummarySnapshot {
   combinations: number;
 }
 
+export interface RecordsMeta {
+  total_records: number;
+}
+
 export interface FilterOptions {
   anos: number[];
   diretores: string[];
@@ -73,6 +77,69 @@ export interface ForecastRow {
 export interface ForecastResponse {
   group_by: string[];
   rows: ForecastRow[];
+}
+
+export interface ScenarioSeriesData {
+  id: string;
+  label: string;
+  description: string;
+  totals: YearAggregate[];
+}
+
+export interface PreprocessSnapshot {
+  filters: Record<string, string | null>;
+  total_records: number;
+  scenarios: ScenarioSeriesData[];
+}
+
+export interface CombinationSnapshot {
+  id: number;
+  diretor: string;
+  sigla_uf: string;
+  tipo_produto: string;
+  familia: string;
+  familia_producao: string;
+  marca: string;
+  cod_produto: string;
+  produto: string;
+  registros: number;
+  first_year: number;
+  last_year: number;
+  volume_total: number;
+  receita_total: number;
+}
+
+export type NotificationStatus = "running" | "completed" | "failed";
+
+export interface NotificationItem {
+  id: string;
+  category: string;
+  title: string;
+  message: string;
+  status: NotificationStatus;
+  progress?: number | null;
+  processed_rows?: number | null;
+  total_rows?: number | null;
+  created_at: string;
+  updated_at: string;
+  metadata: Record<string, unknown>;
+}
+
+export interface ScenarioFilterPayload {
+  diretor?: string;
+  sigla_uf?: string;
+  tipo_produto?: string;
+  familia?: string;
+  familia_producao?: string;
+  marca?: string;
+  situacao_lista?: string;
+  cod_produto?: string;
+  produto?: string;
+}
+
+export interface CombinationFilterPayload extends ScenarioFilterPayload {
+  ano?: number;
+  limit?: number;
 }
 
 export interface ManualGrowthRule {
@@ -178,8 +245,10 @@ export interface ForecastState {
   rowOverrides: Record<string, RowOverride>;
   priceOverrides: Record<string, Record<number, number>>;
   records: PlanningRecord[];
+  recordsMeta?: RecordsMeta;
+  notifications: NotificationItem[];
+  activeUploadFilename: string | null;
   loadingUpload: boolean;
-  uploadProgress: number | null;
   loadingDelete: boolean;
   deleteSummary: DeleteSummary | null;
   summary?: SummarySnapshot;
@@ -187,6 +256,9 @@ export interface ForecastState {
   typeProductBaselines?: TypeProductBaseline[];
   aggregateData?: AggregateResponse;
   forecastDetail?: ForecastResponse;
+  preprocessSnapshot?: PreprocessSnapshot;
+  combinationsSnapshot?: CombinationSnapshot[];
+  loadingPreprocess: boolean;
   setActiveTab: (tab: string) => void;
   updateForecastSettings: (partial: Partial<ForecastSettings>) => void;
   updatePriceSettings: (partial: Partial<PriceSettings>) => void;
@@ -200,7 +272,11 @@ export interface ForecastState {
   wipeDataset: (confirmation: string) => Promise<void>;
   fetchSummary: () => Promise<void>;
   fetchFilters: () => Promise<void>;
+  fetchNotifications: () => Promise<void>;
+  fetchRecordsMeta: () => Promise<void>;
   fetchTypeProductBaseline: () => Promise<void>;
+  fetchPreprocessSnapshot: (filters?: ScenarioFilterPayload) => Promise<void>;
+  fetchCombinationsSnapshot: (filters?: CombinationFilterPayload) => Promise<void>;
   setPriceOverride: (type: string, year: number, value?: number) => void;
   resetPriceOverride: (type: string) => void;
   fetchAggregate: (metric: "volume" | "revenue", groupBy: string[]) => Promise<void>;

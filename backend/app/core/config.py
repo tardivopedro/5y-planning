@@ -14,6 +14,14 @@ class Settings(BaseSettings):
     default="sqlite:///./data/forecast.db",
     description="SQLAlchemy-style database URL."
   )
+  database_url_local: Optional[str] = Field(
+    default=None,
+    description="URL do banco preferido em desenvolvimento (ex.: Postgres local)."
+  )
+  database_url_remote: Optional[str] = Field(
+    default=None,
+    description="URL de fallback remoto (ex.: instância Railway)."
+  )
   delete_confirmation_text: str = Field(
     default="DELETE-ALL",
     min_length=3,

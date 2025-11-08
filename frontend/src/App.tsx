@@ -1,6 +1,9 @@
+import { useEffect } from "react";
 import { ModuleTabs } from "./components/ModuleTabs";
+import { NotificationCenter } from "./components/NotificationCenter";
 import { useForecastStore } from "./store/useForecastStore";
 import { DataUploadModule } from "./modules/DataUploadModule";
+import { PreprocessingModule } from "./modules/PreprocessingModule";
 import { ForecastModule } from "./modules/ForecastModule";
 import { EditingModule } from "./modules/EditingModule";
 import { PricingModule } from "./modules/PricingModule";
@@ -10,6 +13,8 @@ function renderModule(activeTab: string) {
   switch (activeTab) {
     case "upload":
       return <DataUploadModule />;
+    case "preprocess":
+      return <PreprocessingModule />;
     case "forecast":
       return <ForecastModule />;
     case "edition":
@@ -24,7 +29,15 @@ function renderModule(activeTab: string) {
 }
 
 export default function App() {
-  const { activeTab, setActiveTab } = useForecastStore();
+  const { activeTab, setActiveTab, fetchNotifications } = useForecastStore();
+
+  useEffect(() => {
+    fetchNotifications().catch(() => null);
+    const interval = setInterval(() => {
+      fetchNotifications().catch(() => null);
+    }, 4000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
 
   return (
     <div className="min-h-screen bg-slate-100">
@@ -43,9 +56,7 @@ export default function App() {
                 plano consolidado.
               </p>
             </div>
-            <button className="rounded-full border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-600 shadow-sm transition hover:bg-brand-50 hover:text-brand-700">
-              IA Sugere Forecast
-            </button>
+            <NotificationCenter />
           </div>
           <ModuleTabs activeTab={activeTab} onChange={setActiveTab} />
         </div>

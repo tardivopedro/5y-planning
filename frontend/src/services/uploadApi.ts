@@ -1,12 +1,18 @@
 import { getApiUrl, httpRequest } from "../lib/api";
 import {
+  AggregateResponse,
+  CombinationFilterPayload,
+  CombinationSnapshot,
   FilterOptions,
+  ForecastResponse,
   PlanningRecord,
+  PreprocessSnapshot,
+  ScenarioFilterPayload,
   SummarySnapshot,
   TypeProductBaseline,
   UploadSummary,
-  AggregateResponse,
-  ForecastResponse
+  RecordsMeta,
+  NotificationItem
 } from "../types/forecast";
 
 interface UploadResponse {
@@ -24,14 +30,15 @@ export async function uploadDataset({
   strict: boolean;
   onProgress?: (value: number) => void;
 }): Promise<UploadSummary> {
+  const query = strict ? "strict=true" : "strict=false";
+  const uploadUrl = await getApiUrl(`/upload/?${query}`);
   return new Promise<UploadSummary>((resolve, reject) => {
     const formData = new FormData();
     formData.append("file", file);
 
-    const query = strict ? "strict=true" : "strict=false";
     const xhr = new XMLHttpRequest();
     // Usa /upload/ com barra para evitar redirect do Railway
-    xhr.open("POST", getApiUrl(`/upload/?${query}`));
+    xhr.open("POST", uploadUrl);
 
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable && onProgress) {
@@ -93,7 +100,7 @@ export async function fetchRecords(params: RecordFilters = {}): Promise<Planning
   if (params.familia) searchParams.set("familia", params.familia);
   if (params.marca) searchParams.set("marca", params.marca);
 
-  const url = getApiUrl(`/upload/records?${searchParams.toString()}`);
+  const url = await getApiUrl(`/upload/records?${searchParams.toString()}`);
   return httpRequest<PlanningRecord[]>(url, {
     method: "GET"
   });
@@ -106,44 +113,83 @@ interface DeleteResponse {
 export async function deleteAllRecords(
   confirmation: string
 ): Promise<DeleteResponse> {
-  const response = await fetch(getApiUrl("/upload/records"), {
+  const url = await getApiUrl("/upload/records");
+  return httpRequest<DeleteResponse>(url, {
     method: "DELETE",
     headers: {
       "Content-Type": "application/json"
     },
     body: JSON.stringify({ confirmation })
   });
-
-  if (!response.ok) {
-    const data = await response.json().catch(() => ({}));
-    const detail = data.detail ?? response.statusText;
-    throw new Error(detail);
-  }
-
-  return response.json() as Promise<DeleteResponse>;
 }
 
 export async function fetchSummary(): Promise<SummarySnapshot> {
-  return httpRequest<SummarySnapshot>(getApiUrl("/analytics/summary"));
+  const url = await getApiUrl("/analytics/summary");
+  return httpRequest<SummarySnapshot>(url);
+}
+
+export async function fetchRecordsMeta(): Promise<RecordsMeta> {
+  const url = await getApiUrl("/upload/records/meta");
+  return httpRequest<RecordsMeta>(url);
 }
 
 export async function fetchFilters(): Promise<FilterOptions> {
-  return httpRequest<FilterOptions>(getApiUrl("/upload/records/filters"));
+  const url = await getApiUrl("/upload/records/filters");
+  return httpRequest<FilterOptions>(url);
+}
+
+export async function fetchNotifications(): Promise<NotificationItem[]> {
+  const url = await getApiUrl("/notifications");
+  return httpRequest<NotificationItem[]>(url);
 }
 
 export async function fetchTypeProductBaseline(): Promise<TypeProductBaseline[]> {
-  return httpRequest<TypeProductBaseline[]>(getApiUrl("/analytics/type-product"));
+  const url = await getApiUrl("/analytics/type-product");
+  return httpRequest<TypeProductBaseline[]>(url);
 }
 
 export async function fetchAggregate(metric: "volume" | "revenue", groupBy: string[]): Promise<AggregateResponse> {
   const params = new URLSearchParams();
   params.set("metric", metric);
   groupBy.forEach((field) => params.append("group_by", field));
-  return httpRequest<AggregateResponse>(getApiUrl(`/analytics/aggregate?${params.toString()}`));
+  const url = await getApiUrl(`/analytics/aggregate?${params.toString()}`);
+  return httpRequest<AggregateResponse>(url);
 }
 
 export async function fetchForecastDetail(groupBy: string[]): Promise<ForecastResponse> {
   const params = new URLSearchParams();
   groupBy.forEach((field) => params.append("group_by", field));
-  return httpRequest<ForecastResponse>(getApiUrl(`/analytics/forecast?${params.toString()}`));
+  const url = await getApiUrl(`/analytics/forecast?${params.toString()}`);
+  return httpRequest<ForecastResponse>(url);
+}
+
+export async function fetchPreprocessSnapshot(
+  filters: ScenarioFilterPayload = {}
+): Promise<PreprocessSnapshot> {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, value);
+  });
+  const query = params.toString();
+  const path = query ? `/analytics/preprocess?${query}` : "/analytics/preprocess";
+  const url = await getApiUrl(path);
+  return httpRequest<PreprocessSnapshot>(url);
+}
+
+export async function fetchCombinationsSnapshot(
+  filters: CombinationFilterPayload = {}
+): Promise<CombinationSnapshot[]> {
+  const params = new URLSearchParams();
+  const { limit, ano, ...dimensionFilters } = filters;
+  if (limit) params.set("limit", String(limit));
+  if (typeof ano === "number") params.set("ano", String(ano));
+
+  Object.entries(dimensionFilters).forEach(([key, value]) => {
+    if (value) params.set(key, value);
+  });
+
+  const query = params.toString();
+  const path = query ? `/analytics/combinations?${query}` : "/analytics/combinations";
+  const url = await getApiUrl(path);
+  return httpRequest<CombinationSnapshot[]>(url);
 }

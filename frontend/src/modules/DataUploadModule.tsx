@@ -23,7 +23,6 @@ export function DataUploadModule() {
     uploadSummary,
     uploadDataset,
     loadingUpload,
-    uploadProgress,
     records,
     fetchRecords,
     wipeDataset,
@@ -31,13 +30,17 @@ export function DataUploadModule() {
     deleteSummary,
     fetchSummary,
     fetchFilters,
+    fetchRecordsMeta,
+    fetchNotifications,
     summary,
-    filters
+    filters,
+    recordsMeta,
+    notifications,
+    activeUploadFilename
   } = useForecastStore((state) => ({
     uploadSummary: state.uploadSummary,
     uploadDataset: state.uploadDataset,
     loadingUpload: state.loadingUpload,
-    uploadProgress: state.uploadProgress,
     records: state.records,
     fetchRecords: state.fetchRecords,
     wipeDataset: state.wipeDataset,
@@ -45,8 +48,13 @@ export function DataUploadModule() {
     deleteSummary: state.deleteSummary,
     fetchSummary: state.fetchSummary,
     fetchFilters: state.fetchFilters,
+    fetchRecordsMeta: state.fetchRecordsMeta,
+    fetchNotifications: state.fetchNotifications,
     summary: state.summary,
-    filters: state.filters
+    filters: state.filters,
+    recordsMeta: state.recordsMeta,
+    notifications: state.notifications,
+    activeUploadFilename: state.activeUploadFilename
   }));
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -57,12 +65,79 @@ export function DataUploadModule() {
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteFeedback, setDeleteFeedback] = useState<string | null>(null);
   const deleteToken = import.meta.env.VITE_DELETE_TOKEN ?? "DELETE-ALL";
+  const historicalSummary = useMemo(
+    () => summary?.totals.filter((item) => item.year <= 2026) ?? [],
+    [summary]
+  );
+  const historicalRecords = useMemo(
+    () => records.filter((row) => row.ano <= 2026),
+    [records]
+  );
+  const previewRecords = useMemo(
+    () => historicalRecords.slice(0, 10),
+    [historicalRecords]
+  );
+  const totalHistoricalRecords = recordsMeta?.total_records;
+  const formattedTotalRecords =
+    totalHistoricalRecords !== undefined
+      ? totalHistoricalRecords.toLocaleString("pt-BR")
+      : "—";
+  const uploadProgressInfo = useMemo(() => {
+    if (!notifications.length) return null;
+    const candidate = notifications.find((notification) => {
+      if (notification.category !== "upload") return false;
+      if (activeUploadFilename) {
+        return notification.metadata?.filename === activeUploadFilename;
+      }
+      return notification.status === "running";
+    });
+    if (!candidate) return null;
+    let percent: number | null = null;
+    if (candidate.progress !== null && candidate.progress !== undefined) {
+      percent = Math.round(candidate.progress * 100);
+    } else if (
+      typeof candidate.processed_rows === "number" &&
+      typeof candidate.total_rows === "number" &&
+      candidate.total_rows > 0
+    ) {
+      percent = Math.round((candidate.processed_rows / candidate.total_rows) * 100);
+    }
+    return {
+      percent,
+      message: candidate.message,
+      status: candidate.status
+    };
+  }, [notifications, activeUploadFilename]);
 
   useEffect(() => {
-    Promise.all([fetchRecords(), fetchSummary(), fetchFilters()]).catch((err) => {
+    const loadInitialData = async () => {
+      const promises = [
+        fetchRecords(),
+        fetchSummary(),
+        fetchFilters(),
+        fetchRecordsMeta(),
+        fetchNotifications()
+      ];
+      const results = await Promise.allSettled(promises);
+      const failure = results.find((result) => result.status === "rejected");
+      if (failure && failure.reason instanceof Error) {
+        setError(failure.reason.message);
+      }
+    };
+    loadInitialData().catch((err) => {
       setError(err.message);
     });
-  }, [fetchRecords, fetchSummary, fetchFilters]);
+  }, [fetchRecords, fetchSummary, fetchFilters, fetchRecordsMeta, fetchNotifications]);
+
+  useEffect(() => {
+    if (typeof recordsMeta?.total_records === "number") {
+      return;
+    }
+    const timer = setInterval(() => {
+      fetchRecordsMeta().catch(() => null);
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [recordsMeta?.total_records, fetchRecordsMeta]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setFeedback(null);
@@ -183,16 +258,24 @@ export function DataUploadModule() {
                 </span>
               )}
             </div>
-            {uploadProgress !== null ? (
-              <div className="mt-3 w-full rounded-full bg-slate-200">
-                <div
-                  className="h-2 rounded-full bg-brand-500 transition-all"
-                  style={{ width: `${uploadProgress}%` }}
-                />
-                <div className="mt-1 text-right text-xs font-medium text-slate-600">
-                  {uploadProgress}% enviado
+            {uploadProgressInfo && uploadProgressInfo.percent !== null ? (
+              <div className="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-600">
+                  <span>Ingestão em andamento</span>
+                  <span>{uploadProgressInfo.percent}%</span>
                 </div>
+                <div className="mt-2 h-2 rounded-full bg-slate-200">
+                  <div
+                    className="h-2 rounded-full bg-brand-500 transition-all"
+                    style={{ width: `${uploadProgressInfo.percent}%` }}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-slate-500">
+                  {uploadProgressInfo.message}
+                </p>
               </div>
+            ) : loadingUpload ? (
+              <StatusPill level="info">Enviando arquivo ao backend...</StatusPill>
             ) : null}
 
             {feedback ? (
@@ -280,9 +363,30 @@ export function DataUploadModule() {
       </SectionCard>
 
       <SectionCard
-        title="Prévia dos registros estorados"
-        description="As primeiras linhas persistidas no banco são exibidas abaixo para conferência rápida."
+        title="Prévia dos registros históricos"
+        description="As primeiras linhas do histórico (2017–2026) persistido no banco são exibidas abaixo para conferência rápida."
       >
+        <div className="mb-4 max-w-xs overflow-hidden rounded-2xl border border-slate-200">
+          <table className="min-w-full divide-y divide-slate-200 text-xs">
+            <thead className="bg-slate-50 text-left text-slate-600">
+              <tr>
+                <th className="px-3 py-2 font-semibold">Métrica</th>
+                <th className="px-3 py-2 text-right font-semibold">Valor</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white text-slate-700">
+              <tr>
+                <td className="px-3 py-2">Total de registros (2017–2026)</td>
+                <td className="px-3 py-2 text-right font-semibold text-slate-900">
+                  {formattedTotalRecords}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p className="px-3 pb-3 text-[11px] text-slate-500">
+            Consulta direta do banco — reflete a base carregada no backend.
+          </p>
+        </div>
         <div className="overflow-hidden rounded-2xl border border-slate-200">
           <div className="overflow-x-auto">
             <table className="min-w-[960px] divide-y divide-slate-200 text-xs">
@@ -308,18 +412,18 @@ export function DataUploadModule() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
-                {records.length === 0 ? (
+                {previewRecords.length === 0 ? (
                   <tr>
                     <td
                       colSpan={9}
                       className="px-4 py-6 text-center text-sm text-slate-500"
                     >
-                      Nenhum registro encontrado. Faça o upload para carregar a
-                      base.
+                      Nenhum registro histórico (2017–2026) encontrado. Faça o
+                      upload para carregar a base.
                     </td>
                   </tr>
                 ) : (
-                  records.map((row) => (
+                  previewRecords.map((row) => (
                     <tr key={row.id} className="hover:bg-slate-50">
                       <td className="px-3 py-2 font-medium text-slate-800">
                         {row.ano}
@@ -348,95 +452,56 @@ export function DataUploadModule() {
             </table>
           </div>
         </div>
+        <p className="text-xs text-slate-500">
+          Mostrando no máximo 10 linhas para conferência rápida.
+        </p>
       </SectionCard>
 
       <SectionCard
         title="Resumo consolidado"
-        description="Visão anual do histórico e baseline projetado automaticamente para 2027–2030."
+        description="Visão anual do histórico 2017–2026 carregado via upload."
       >
-        <div className="grid gap-6 lg:grid-cols-[2fr,1fr]">
-          <div>
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-              Histórico 2017–2026
-            </h3>
-            <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200">
-              <table className="min-w-full divide-y divide-slate-200 text-xs">
-                <thead className="bg-slate-50 text-slate-600">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-semibold">Ano</th>
-                    <th className="px-3 py-2 text-left font-semibold">Volume (Kg)</th>
-                    <th className="px-3 py-2 text-left font-semibold">Receita (R$)</th>
+        <div>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Histórico 2017–2026
+          </h3>
+          <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200">
+            <table className="min-w-full divide-y divide-slate-200 text-xs">
+              <thead className="bg-slate-50 text-slate-600">
+                <tr>
+                  <th className="px-3 py-2 text-left font-semibold">Ano</th>
+                  <th className="px-3 py-2 text-left font-semibold">Volume (Kg)</th>
+                  <th className="px-3 py-2 text-left font-semibold">Receita (R$)</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
+                {historicalSummary.map((row) => (
+                  <tr key={row.year}>
+                    <td className="px-3 py-2 font-medium text-slate-800">
+                      {row.year}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {row.volume.toLocaleString("pt-BR")}
+                    </td>
+                    <td className="px-3 py-2 text-right">
+                      {row.revenue.toLocaleString("pt-BR", {
+                        style: "currency",
+                        currency: "BRL"
+                      })}
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
-                  {summary?.totals.map((row) => (
-                    <tr key={row.year}>
-                      <td className="px-3 py-2 font-medium text-slate-800">
-                        {row.year}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {row.volume.toLocaleString("pt-BR")}
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        {row.revenue.toLocaleString("pt-BR", {
-                          style: "currency",
-                          currency: "BRL"
-                        })}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <div className="space-y-4">
-            <div>
-              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-                Baseline 2027–2030
-              </h3>
-              <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200">
-                <table className="min-w-full text-xs">
-                  <thead className="bg-slate-50 text-slate-600">
-                    <tr>
-                      <th className="px-3 py-2 text-left font-semibold">Ano</th>
-                      <th className="px-3 py-2 text-right font-semibold">Volume</th>
-                      <th className="px-3 py-2 text-right font-semibold">Receita</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
-                    {summary?.baseline.map((row) => (
-                      <tr key={row.year}>
-                        <td className="px-3 py-2 font-medium text-slate-800">
-                          {row.year}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          {row.volume.toLocaleString("pt-BR", {
-                            maximumFractionDigits: 0
-                          })}
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          {row.revenue.toLocaleString("pt-BR", {
-                            style: "currency",
-                            currency: "BRL"
-                          })}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm text-slate-700">
-              <p className="text-xs font-semibold uppercase text-slate-500">
-                Combinações carregadas
-              </p>
-              <p className="mt-1 text-2xl font-semibold text-slate-900">
-                {summary?.combinations.toLocaleString("pt-BR") ?? "—"}
-              </p>
-              <p className="mt-1 text-xs text-slate-500">
-                Total de linhas consideradas no histórico (ano x SKU x demais dimensões).
-              </p>
-            </div>
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 text-xs text-slate-600">
+            <p className="font-semibold text-slate-700">Observações</p>
+            <ul className="mt-2 list-disc space-y-1 pl-4">
+              <li>Os dados futuros são trabalhados nas telas de edição e forecast.</li>
+              <li className="font-medium text-amber-600">
+                Caso reenvie um arquivo, apenas registros existentes são atualizados.
+              </li>
+            </ul>
           </div>
         </div>
       </SectionCard>

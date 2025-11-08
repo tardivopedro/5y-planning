@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from sqlalchemy import distinct
+from fastapi.concurrency import run_in_threadpool
+from sqlalchemy import distinct, func
 from sqlmodel import select
 
 from app.core.config import get_settings
@@ -10,25 +11,46 @@ from app.schemas.planning import (
   DeleteResponse,
   FilterOptions,
   PlanningRecordRead,
+  RecordsMeta,
   UploadSummary
 )
+from app.services.notification_service import notification_center
 from app.services.upload_service import ingest_file, wipe_all_records
 
 router = APIRouter()
 
 
 @router.post("/", response_model=UploadSummary)
-@router.post("", response_model=UploadSummary)  # Aceita tanto /upload/ quanto /upload
+@router.post("", response_model=UploadSummary)  # Aceita /upload e /upload/
 async def upload_dataset(
   file: UploadFile = File(...),
   strict: bool = True
 ):
+  filename = file.filename or "dataset"
+  task_id = notification_center.start(
+    category="upload",
+    title=f"Recebendo {filename}",
+    message="Upload em andamento...",
+    metadata={"filename": filename}
+  )
   try:
     content = await file.read()
-    inserted, updated, errors = ingest_file(file.filename, content, strict_columns=strict)
+    notification_center.update(
+      task_id,
+      message="Arquivo recebido, validando layout..."
+    )
+    inserted, updated, errors = await run_in_threadpool(
+      ingest_file,
+      filename,
+      content,
+      strict_columns=strict,
+      notification_id=task_id
+    )
   except ValueError as exc:
+    notification_center.fail(task_id, message=f"{filename} inválido: {exc}")
     raise HTTPException(status_code=400, detail=str(exc)) from exc
   except Exception as exc:
+    notification_center.fail(task_id, message=f"{filename} falhou: {exc}")
     raise HTTPException(status_code=500, detail="Erro ao processar arquivo") from exc
 
   return UploadSummary(inserted_rows=inserted, updated_rows=updated, errors=errors or None)
@@ -65,12 +87,26 @@ def list_records(
   return results
 
 
+@router.get("/records/meta", response_model=RecordsMeta)
+def get_records_meta(session=Depends(get_session)):
+  result = session.exec(
+    select(func.count()).select_from(PlanningRecord)
+  ).one()
+  total = result[0] if isinstance(result, (tuple, list)) else result
+  return RecordsMeta(total_records=int(total or 0))
+
+
 @router.get("/records/filters", response_model=FilterOptions)
 def get_filter_options():
   with session_context() as session:
     def fetch_distinct(field):
       statement = select(distinct(field)).order_by(field)
-      return [row[0] for row in session.exec(statement).all() if row[0]]
+      values = []
+      for row in session.exec(statement).all():
+        value = row[0] if isinstance(row, (tuple, list)) else row
+        if value:
+          values.append(value)
+      return values
 
     return FilterOptions(
       anos=fetch_distinct(PlanningRecord.ano),

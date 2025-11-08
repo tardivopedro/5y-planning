@@ -2,6 +2,7 @@ import clsx from "clsx";
 
 const tabs = [
   { id: "upload", label: "Upload de Dados" },
+  { id: "preprocess", label: "Pré-processamento" },
   { id: "forecast", label: "Forecast Automático" },
   { id: "edition", label: "Edição Multinível" },
   { id: "pricing", label: "Aplicação de Preço" },

@@ -47,3 +47,7 @@ class FilterOptions(BaseModel):
   situacoes: List[str]
   codigos: List[str]
   produtos: List[str]
+
+
+class RecordsMeta(BaseModel):
+  total_records: int

@@ -20,9 +20,11 @@ def get_yearly_totals() -> Tuple[List[Tuple[int, float, float]], int]:
       .order_by(PlanningRecord.ano)
     )
     rows = session.exec(statement).all()
-    total_combinations = sum(row[3] for row in rows)
+    total_rows_statement = select(func.count()).select_from(PlanningRecord)
+    raw_total = session.exec(total_rows_statement).one()
+    total_rows = raw_total[0] if isinstance(raw_total, (tuple, list)) else raw_total or 0
     yearly = [(row[0], float(row[1] or 0), float(row[2] or 0)) for row in rows]
-    return yearly, total_combinations
+    return yearly, int(total_rows)
 
 
 def compute_baseline(yearly: List[Tuple[int, float, float]]) -> List[Tuple[int, float, float]]:

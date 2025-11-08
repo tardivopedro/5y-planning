@@ -17,7 +17,11 @@ import {
   fetchTypeProductBaseline,
   uploadDataset as uploadDatasetApi,
   fetchAggregate,
-  fetchForecastDetail
+  fetchForecastDetail,
+  fetchPreprocessSnapshot as fetchPreprocessSnapshotApi,
+  fetchCombinationsSnapshot as fetchCombinationsSnapshotApi,
+  fetchRecordsMeta as fetchRecordsMetaApi,
+  fetchNotifications as fetchNotificationsApi
 } from "../services/uploadApi";
 
 const sampleHierarchy: HierarchyNode[] = [
@@ -353,8 +357,10 @@ export const useForecastStore = create<ForecastState>((set, get) => ({
   rowOverrides: {},
   priceOverrides: {},
   records: [],
+  recordsMeta: undefined,
+  notifications: [],
+  activeUploadFilename: null,
   loadingUpload: false,
-  uploadProgress: null,
   loadingDelete: false,
   deleteSummary: null,
   summary: undefined,
@@ -362,6 +368,9 @@ export const useForecastStore = create<ForecastState>((set, get) => ({
   typeProductBaselines: undefined,
   aggregateData: undefined,
   forecastDetail: undefined,
+  preprocessSnapshot: undefined,
+  combinationsSnapshot: undefined,
+  loadingPreprocess: false,
   scenarios: [
     {
       id: "base",
@@ -472,24 +481,25 @@ export const useForecastStore = create<ForecastState>((set, get) => ({
       };
     }),
   uploadDataset: async ({ file, strict }) => {
-    set({ loadingUpload: true, uploadProgress: 0 });
+    set({ loadingUpload: true, activeUploadFilename: file.name });
     try {
       const summary = await uploadDatasetApi({
         file,
-        strict,
-        onProgress: (percent) => set({ uploadProgress: Math.min(percent, 95) })
+        strict
       });
-      set({ uploadSummary: summary, uploadProgress: 100 });
+      set({ uploadSummary: summary });
       await get().fetchRecords();
-      await Promise.all([
+      await Promise.allSettled([
         get().fetchSummary(),
         get().fetchFilters(),
         get().fetchTypeProductBaseline(),
         get().fetchAggregate("volume", ["diretor", "sigla_uf", "tipo_produto"]),
-        get().fetchForecastDetail(["cod_produto", "diretor", "sigla_uf", "tipo_produto", "familia"])
+        get().fetchForecastDetail(["cod_produto", "diretor", "sigla_uf", "tipo_produto", "familia"]),
+        get().fetchRecordsMeta(),
+        get().fetchNotifications()
       ]);
     } finally {
-      set({ loadingUpload: false, uploadProgress: null });
+      set({ loadingUpload: false, activeUploadFilename: null });
     }
   },
   fetchRecords: async (limitOrFilters: number | RecordFilters = 100) => {
@@ -499,6 +509,10 @@ export const useForecastStore = create<ForecastState>((set, get) => ({
         : limitOrFilters;
     const records = await fetchRecordsApi(params);
     set({ records });
+  },
+  fetchRecordsMeta: async () => {
+    const recordsMeta = await fetchRecordsMetaApi();
+    set({ recordsMeta });
   },
   wipeDataset: async (confirmation: string) => {
     set({ loadingDelete: true });
@@ -512,6 +526,7 @@ export const useForecastStore = create<ForecastState>((set, get) => ({
         uploadSummary: null,
         records: []
       });
+      await Promise.allSettled([get().fetchRecordsMeta(), get().fetchNotifications()]);
     } finally {
       set({ loadingDelete: false });
     }
@@ -524,9 +539,30 @@ export const useForecastStore = create<ForecastState>((set, get) => ({
     const filters = await fetchFiltersApi();
     set({ filters });
   },
+  fetchNotifications: async () => {
+    try {
+      const notifications = await fetchNotificationsApi();
+      set({ notifications });
+    } catch {
+      // mantém notificações atuais se falhar
+    }
+  },
   fetchTypeProductBaseline: async () => {
     const typeProductBaselines = await fetchTypeProductBaseline();
     set({ typeProductBaselines });
+  },
+  fetchPreprocessSnapshot: async (filters) => {
+    set({ loadingPreprocess: true });
+    try {
+      const snapshot = await fetchPreprocessSnapshotApi(filters ?? {});
+      set({ preprocessSnapshot: snapshot });
+    } finally {
+      set({ loadingPreprocess: false });
+    }
+  },
+  fetchCombinationsSnapshot: async (filters) => {
+    const combinations = await fetchCombinationsSnapshotApi(filters ?? {});
+    set({ combinationsSnapshot: combinations });
   },
   fetchAggregate: async (metric, groupBy) => {
     const aggregateData = await fetchAggregate(metric, groupBy as string[]);
