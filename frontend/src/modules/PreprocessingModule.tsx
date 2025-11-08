@@ -6,6 +6,7 @@ import { useForecastStore } from "../store/useForecastStore";
 import type { ScenarioFilterPayload } from "../types/forecast";
 
 const scenarioColors = ["#2563eb", "#22c55e", "#f97316"];
+type FilterField = keyof ScenarioFilterPayload;
 
 function formatVolume(value?: number) {
   if (value === undefined) return "—";
@@ -17,6 +18,14 @@ function formatRevenue(value?: number) {
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function formatSeconds(seconds?: number) {
+  if (!seconds) return "—";
+  if (seconds < 60) return `${seconds.toFixed(1)} s`;
+  const minutes = seconds / 60;
+  if (minutes < 60) return `${minutes.toFixed(1)} min`;
+  return `${(minutes / 60).toFixed(1)} h`;
+}
+
 export function PreprocessingModule() {
   const {
     filters,
@@ -25,7 +34,13 @@ export function PreprocessingModule() {
     fetchPreprocessSnapshot,
     loadingPreprocess,
     combinationsSnapshot,
-    fetchCombinationsSnapshot
+    fetchCombinationsSnapshot,
+    levelScoreRun,
+    levelScoreResults,
+    loadingLevelScore,
+    startLevelScoreRun,
+    processLevelScoreChunk,
+    fetchLevelScoreResults
   } = useForecastStore((state) => ({
     filters: state.filters,
     fetchFilters: state.fetchFilters,
@@ -33,17 +48,39 @@ export function PreprocessingModule() {
     fetchPreprocessSnapshot: state.fetchPreprocessSnapshot,
     loadingPreprocess: state.loadingPreprocess,
     combinationsSnapshot: state.combinationsSnapshot,
-    fetchCombinationsSnapshot: state.fetchCombinationsSnapshot
+    fetchCombinationsSnapshot: state.fetchCombinationsSnapshot,
+    levelScoreRun: state.levelScoreRun,
+    levelScoreResults: state.levelScoreResults,
+    loadingLevelScore: state.loadingLevelScore,
+    startLevelScoreRun: state.startLevelScoreRun,
+    processLevelScoreChunk: state.processLevelScoreChunk,
+    fetchLevelScoreResults: state.fetchLevelScoreResults
   }));
 
   const [filterState, setFilterState] = useState<ScenarioFilterPayload>({});
   const [comboYear, setComboYear] = useState<number | undefined>(undefined);
+  const [openFilter, setOpenFilter] = useState<FilterField | null>(null);
+  const [searchTerms, setSearchTerms] = useState<Record<string, string>>({});
 
   useEffect(() => {
     fetchFilters().catch(() => null);
     fetchPreprocessSnapshot().catch(() => null);
     fetchCombinationsSnapshot({ limit: 15 }).catch(() => null);
   }, [fetchFilters, fetchPreprocessSnapshot, fetchCombinationsSnapshot]);
+
+  useEffect(() => {
+    if (!levelScoreRun) return;
+    if (levelScoreRun.status === "completed") {
+      if (levelScoreResults.length === 0) {
+        fetchLevelScoreResults(levelScoreRun.id).catch(() => null);
+      }
+      return;
+    }
+    const timer = setTimeout(() => {
+      processLevelScoreChunk(levelScoreRun.id).catch(() => null);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [levelScoreRun, levelScoreResults.length, processLevelScoreChunk, fetchLevelScoreResults]);
 
   const filterOptions = useMemo(() => {
     const collator = new Intl.Collator("pt-BR", { sensitivity: "base" });
@@ -88,49 +125,128 @@ export function PreprocessingModule() {
         ano: comboYear,
         limit: 25
       }).catch(() => null);
+      fetchFilters(filterState).catch(() => null);
     }, 350);
     return () => clearTimeout(timer);
-  }, [filterState, comboYear, fetchPreprocessSnapshot, fetchCombinationsSnapshot]);
+  }, [filterState, comboYear, fetchPreprocessSnapshot, fetchCombinationsSnapshot, fetchFilters]);
+
+  const updateFilterField = (field: FilterField, values: string[]) => {
+    setFilterState((prev) => {
+      const next = { ...prev };
+      if (values.length) {
+        next[field] = values;
+      } else {
+        delete next[field];
+      }
+      return next;
+    });
+  };
 
   const handleClearFilters = () => {
     setFilterState({});
     setComboYear(undefined);
+    setOpenFilter(null);
+    setSearchTerms({});
   };
 
-  const renderSelect = (
+  const renderMultiSelect = (
     label: string,
-    field: keyof ScenarioFilterPayload,
+    field: FilterField,
     options: string[] = []
-  ) => (
-    <label className="flex flex-col gap-1 text-sm text-slate-600" key={field}>
-      <span className="font-medium">{label}</span>
-      <select
-        value={filterState[field] ?? ""}
-        onChange={(event) =>
-          setFilterState((prev) => ({
-            ...prev,
-            [field]: event.target.value || undefined
-          }))
-        }
-        className="rounded-xl border border-slate-200 px-3 py-2 font-medium text-slate-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200"
-      >
-        <option value="">Todos</option>
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {option}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
+  ) => {
+    const selected = filterState[field] ?? [];
+    const isOpen = openFilter === field;
+    const searchValue = (searchTerms[field] ?? "").toLowerCase();
+    const filteredOptions = searchValue
+      ? options.filter((option) => option.toLowerCase().includes(searchValue))
+      : options;
+
+    const toggleOption = (option: string) => {
+      const current = filterState[field] ?? [];
+      const exists = current.includes(option);
+      const nextValues = exists
+        ? current.filter((item) => item !== option)
+        : [...current, option];
+      updateFilterField(field, nextValues);
+    };
+
+    return (
+      <div className="relative flex flex-col gap-1 text-sm text-slate-600" key={field}>
+        <span className="font-medium">{label}</span>
+        <button
+          type="button"
+          onClick={() => setOpenFilter(isOpen ? null : field)}
+          className="flex items-center justify-between rounded-xl border border-slate-200 px-3 py-2 font-medium text-slate-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200"
+        >
+          <span>{selected.length === 0 ? "Todos" : `${selected.length} selecionado(s)`}</span>
+          <span className="text-xs text-slate-400">{isOpen ? "Fechar" : "Abrir"}</span>
+        </button>
+        {isOpen ? (
+          <div className="absolute z-20 mt-2 w-full max-w-xs rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+            <input
+              type="text"
+              value={searchTerms[field] ?? ""}
+              onChange={(event) =>
+                setSearchTerms((prev) => ({ ...prev, [field]: event.target.value }))
+              }
+              placeholder="Buscar..."
+              className="w-full rounded-lg border border-slate-200 px-3 py-1.5 text-sm text-slate-700 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-200"
+            />
+            <div className="mt-2 max-h-48 overflow-y-auto pr-1">
+              {filteredOptions.length === 0 ? (
+                <p className="px-1 py-2 text-xs text-slate-500">Nenhum resultado.</p>
+              ) : (
+                filteredOptions.map((option) => (
+                  <label
+                    key={option}
+                    className="flex items-center gap-2 py-1 text-sm font-medium text-slate-600"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected.includes(option)}
+                      onChange={() => toggleOption(option)}
+                      className="h-4 w-4 accent-brand-500"
+                    />
+                    <span className="truncate">{option}</span>
+                  </label>
+                ))
+              )}
+            </div>
+            <div className="mt-3 flex items-center justify-between text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => {
+                  updateFilterField(field, []);
+                  setSearchTerms((prev) => ({ ...prev, [field]: "" }));
+                }}
+                className="text-rose-500"
+              >
+                Limpar
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpenFilter(null)}
+                className="rounded-full bg-brand-500 px-3 py-1 text-white shadow-sm"
+              >
+                Concluir
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    );
+  };
 
   const scenarios = preprocessSnapshot?.scenarios ?? [];
   const hasActiveFilters = useMemo(
     () =>
-      Object.values(filterState).some((value) => Boolean(value)) ||
+      Object.values(filterState).some((value) => Array.isArray(value) && value.length > 0) ||
       typeof comboYear === "number",
     [filterState, comboYear]
   );
+  const levelScoreProgress = levelScoreRun && levelScoreRun.total_combinations
+    ? Math.min(levelScoreRun.processed_combinations / levelScoreRun.total_combinations, 1)
+    : 0;
 
   const chartWidth = 640;
   const chartHeight = 220;
@@ -155,16 +271,16 @@ export function PreprocessingModule() {
         title="Pré-processamento & Cenários"
         description="Rode o pré-processamento no backend considerando filtros de dimensão e compare os três cenários calculados automaticamente."
       >
-        <div className="grid gap-4 md:grid-cols-6">
-          {renderSelect("Diretor", "diretor", filterOptions.diretores)}
-          {renderSelect("UF", "sigla_uf", filterOptions.ufs)}
-          {renderSelect("Tipo de Produto", "tipo_produto", filterOptions.tipos_produto)}
-          {renderSelect("Família", "familia", filterOptions.familias)}
-          {renderSelect("Família Produção", "familia_producao", filterOptions.familias_producao)}
-          {renderSelect("Marca", "marca", filterOptions.marcas)}
-          {renderSelect("Situação na Lista", "situacao_lista", filterOptions.situacoes)}
-          {renderSelect("Código do Produto", "cod_produto", filterOptions.codigos)}
-          {renderSelect("Produto", "produto", filterOptions.produtos)}
+        <div className="grid gap-4 md:grid-cols-3 lg:grid-cols-4">
+          {renderMultiSelect("Diretor", "diretor", filterOptions.diretores)}
+          {renderMultiSelect("UF", "sigla_uf", filterOptions.ufs)}
+          {renderMultiSelect("Tipo de Produto", "tipo_produto", filterOptions.tipos_produto)}
+          {renderMultiSelect("Família", "familia", filterOptions.familias)}
+          {renderMultiSelect("Família Produção", "familia_producao", filterOptions.familias_producao)}
+          {renderMultiSelect("Marca", "marca", filterOptions.marcas)}
+          {renderMultiSelect("Situação na Lista", "situacao_lista", filterOptions.situacoes)}
+          {renderMultiSelect("Código do Produto", "cod_produto", filterOptions.codigos)}
+          {renderMultiSelect("Produto", "produto", filterOptions.produtos)}
         </div>
         <div className="mt-4 flex flex-wrap items-center gap-4 text-sm text-slate-600">
           <label className="flex flex-col">
@@ -338,6 +454,119 @@ export function PreprocessingModule() {
               ))}
             </div>
           </div>
+        </div>
+      </SectionCard>
+
+      <SectionCard
+        title="Score de níveis (COV x Complexidade)"
+        description="Calcula o melhor nível para rodar forecast estatístico, considerando estabilidade (COV) e quantidade de combinações."
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            {levelScoreRun ? (
+              <StatusPill level={levelScoreRun.status === "completed" ? "info" : "warning"}>
+                {levelScoreRun.status === "completed"
+                  ? "Execução concluída"
+                  : `Processando nível ${levelScoreRun.processed_levels}/${levelScoreRun.total_levels}`}
+              </StatusPill>
+            ) : null}
+            <div className="text-sm text-slate-600">
+              {levelScoreRun?.last_message ?? "Nenhuma execução recente."}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600">
+            <button
+              type="button"
+              onClick={() => startLevelScoreRun().catch(() => null)}
+              className="rounded-full bg-brand-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-600"
+              disabled={loadingLevelScore || (levelScoreRun && levelScoreRun.status !== "completed")}
+            >
+              {levelScoreRun && levelScoreRun.status !== "completed" ? "Execução em andamento" : "Iniciar cálculo"}
+            </button>
+            {levelScoreRun && levelScoreRun.status !== "completed" ? (
+              <button
+                type="button"
+                onClick={() => processLevelScoreChunk(levelScoreRun.id).catch(() => null)}
+                className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm"
+              >
+                Forçar próximo bloco
+              </button>
+            ) : null}
+            {levelScoreRun && levelScoreRun.status === "completed" ? (
+              <button
+                type="button"
+                onClick={() => fetchLevelScoreResults(levelScoreRun.id).catch(() => null)}
+                className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm"
+              >
+                Atualizar resultados
+              </button>
+            ) : null}
+          </div>
+
+          {levelScoreRun ? (
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+              <div className="flex flex-wrap gap-4">
+                <div>
+                  <p className="text-xs uppercase text-slate-500">Combinações processadas</p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {levelScoreRun.processed_combinations.toLocaleString("pt-BR")} / {levelScoreRun.total_combinations.toLocaleString("pt-BR")}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-slate-500">Níveis concluídos</p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {levelScoreRun.processed_levels}/{levelScoreRun.total_levels}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-slate-500">Tempo estimado</p>
+                  <p className="text-lg font-semibold text-slate-900">
+                    {formatSeconds(levelScoreRun.estimated_seconds)}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-3 h-2 rounded-full bg-slate-200">
+                <div
+                  className="h-2 rounded-full bg-brand-500 transition-all"
+                  style={{ width: `${Math.round(levelScoreProgress * 100)}%` }}
+                />
+              </div>
+            </div>
+          ) : (
+            <p className="text-sm text-slate-500">
+              Clique em "Iniciar cálculo" para avaliar automaticamente a melhor combinação de dimensões.
+            </p>
+          )}
+
+          {levelScoreResults.length > 0 ? (
+            <div className="overflow-x-auto rounded-2xl border border-slate-200">
+              <table className="min-w-[720px] divide-y divide-slate-200 text-xs">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-semibold">Nível</th>
+                    <th className="px-3 py-2 text-left font-semibold">Dimensões</th>
+                    <th className="px-3 py-2 text-right font-semibold">COV</th>
+                    <th className="px-3 py-2 text-right font-semibold">Combinações</th>
+                    <th className="px-3 py-2 text-right font-semibold">Score</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white text-slate-700">
+                  {levelScoreResults.map((row) => (
+                    <tr key={row.level_id}>
+                      <td className="px-3 py-2 font-semibold text-slate-800">{row.level_id}</td>
+                      <td className="px-3 py-2 text-slate-600">{row.dimensions.join(" · ")}</td>
+                      <td className="px-3 py-2 text-right">{row.cov_nivel.toFixed(4)}</td>
+                      <td className="px-3 py-2 text-right">{row.n_combinacoes.toLocaleString("pt-BR")}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-slate-900">
+                        {row.score_final !== undefined ? row.score_final.toFixed(3) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </div>
       </SectionCard>
 

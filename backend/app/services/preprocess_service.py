@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from sqlalchemy import and_, delete, func, select
 from sqlmodel import Session
@@ -8,7 +8,7 @@ from app.db.session import session_context
 from app.models import PlanningCombination, PlanningRecord
 from app.services.analytics_service import compute_baseline
 
-FilterDict = Dict[str, Optional[str]]
+FilterDict = Dict[str, Optional[List[str]]]
 
 
 @dataclass(frozen=True)
@@ -40,15 +40,30 @@ SCENARIO_DEFINITIONS: List[ScenarioDefinition] = [
     volume_multiplier=0.97,
     revenue_multiplier=0.97
   )
-]
+] 
 
-def _apply_filters(statement, filters: FilterDict):
-  for field, value in filters.items():
-    if value is None or value == "":
+def _coerce_values(raw_value: Optional[Sequence[str] | str]) -> Optional[List[str]]:
+  if raw_value is None:
+    return None
+  if isinstance(raw_value, str):
+    values = [raw_value]
+  else:
+    values = [item for item in raw_value if item not in (None, "")]
+  return values or None
+
+
+def apply_filters(statement, filters: FilterDict, model=PlanningRecord):
+  for field, raw_values in filters.items():
+    values = _coerce_values(raw_values)
+    if not values:
       continue
-    column = getattr(PlanningRecord, field, None)
-    if column is not None:
-      statement = statement.where(column == value)
+    column = getattr(model, field, None)
+    if column is None:
+      continue
+    if len(values) == 1:
+      statement = statement.where(column == values[0])
+    else:
+      statement = statement.where(column.in_(values))
   return statement
 
 
@@ -62,7 +77,7 @@ def _collect_yearly_totals(session: Session, filters: FilterDict) -> List[Tuple[
     .group_by(PlanningRecord.ano)
     .order_by(PlanningRecord.ano)
   )
-  statement = _apply_filters(statement, filters)
+  statement = apply_filters(statement, filters)
   rows = session.exec(statement).all()
   return [
     (row[0], float(row[1] or 0), float(row[2] or 0))
@@ -72,7 +87,7 @@ def _collect_yearly_totals(session: Session, filters: FilterDict) -> List[Tuple[
 
 def _count_records(session: Session, filters: FilterDict) -> int:
   statement = select(func.count()).select_from(PlanningRecord)
-  statement = _apply_filters(statement, filters)
+  statement = apply_filters(statement, filters)
   result = session.exec(statement).one()
   total = result[0] if isinstance(result, (tuple, list)) else result
   return int(total or 0)
@@ -179,7 +194,7 @@ def list_combinations_snapshot(
   *,
   limit: int = 500,
   ano: Optional[int] = None,
-  **filters: Optional[str]
+  filters: Optional[FilterDict] = None
 ) -> List[PlanningCombination]:
   statement = select(PlanningCombination).order_by(
     PlanningCombination.diretor,
@@ -190,12 +205,8 @@ def list_combinations_snapshot(
     PlanningCombination.cod_produto
   )
 
-  for field, value in filters.items():
-    if value is None or value == "":
-      continue
-    column = getattr(PlanningCombination, field, None)
-    if column is not None:
-      statement = statement.where(column == value)
+  if filters:
+    statement = apply_filters(statement, filters, model=PlanningCombination)
 
   if ano is not None:
     statement = statement.where(

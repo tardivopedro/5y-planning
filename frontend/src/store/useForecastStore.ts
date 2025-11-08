@@ -6,7 +6,8 @@ import {
   ManualGrowthRule,
   PlanningTableRow,
   PriceSettings,
-  RowOverride
+  RowOverride,
+  ScenarioFilterPayload
 } from "../types/forecast";
 import {
   deleteAllRecords,
@@ -21,7 +22,11 @@ import {
   fetchPreprocessSnapshot as fetchPreprocessSnapshotApi,
   fetchCombinationsSnapshot as fetchCombinationsSnapshotApi,
   fetchRecordsMeta as fetchRecordsMetaApi,
-  fetchNotifications as fetchNotificationsApi
+  fetchNotifications as fetchNotificationsApi,
+  startLevelScoreRun as startLevelScoreRunApi,
+  processLevelScoreChunk as processLevelScoreChunkApi,
+  fetchLevelScoreStatus as fetchLevelScoreStatusApi,
+  fetchLevelScoreResults as fetchLevelScoreResultsApi
 } from "../services/uploadApi";
 
 const sampleHierarchy: HierarchyNode[] = [
@@ -371,6 +376,9 @@ export const useForecastStore = create<ForecastState>((set, get) => ({
   preprocessSnapshot: undefined,
   combinationsSnapshot: undefined,
   loadingPreprocess: false,
+  levelScoreRun: undefined,
+  levelScoreResults: [],
+  loadingLevelScore: false,
   scenarios: [
     {
       id: "base",
@@ -535,8 +543,8 @@ export const useForecastStore = create<ForecastState>((set, get) => ({
     const summary = await fetchSummaryApi();
     set({ summary });
   },
-  fetchFilters: async () => {
-    const filters = await fetchFiltersApi();
+  fetchFilters: async (payload?: ScenarioFilterPayload) => {
+    const filters = await fetchFiltersApi(payload);
     set({ filters });
   },
   fetchNotifications: async () => {
@@ -571,6 +579,31 @@ export const useForecastStore = create<ForecastState>((set, get) => ({
   fetchForecastDetail: async (groupBy) => {
     const forecastDetail = await fetchForecastDetail(groupBy as string[]);
     set({ forecastDetail });
+  },
+  startLevelScoreRun: async (levels) => {
+    set({ loadingLevelScore: true });
+    try {
+      const run = await startLevelScoreRunApi(levels);
+      set({ levelScoreRun: run, levelScoreResults: [] });
+    } finally {
+      set({ loadingLevelScore: false });
+    }
+  },
+  processLevelScoreChunk: async (runId) => {
+    const run = await processLevelScoreChunkApi(runId);
+    set({ levelScoreRun: run });
+    if (run.status === "completed") {
+      const rows = await fetchLevelScoreResultsApi(run.id);
+      set({ levelScoreResults: rows });
+    }
+  },
+  fetchLevelScoreStatus: async (runId) => {
+    const run = await fetchLevelScoreStatusApi(runId);
+    set({ levelScoreRun: run });
+  },
+  fetchLevelScoreResults: async (runId) => {
+    const rows = await fetchLevelScoreResultsApi(runId);
+    set({ levelScoreResults: rows });
   },
   setPriceOverride: (type, year, value) =>
     set((state) => {

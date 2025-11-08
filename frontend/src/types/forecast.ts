@@ -109,6 +109,37 @@ export interface CombinationSnapshot {
   receita_total: number;
 }
 
+export interface LevelDescriptor {
+  level_id: string;
+  dimensions: string[];
+  combinations: number;
+  status: "pending" | "completed";
+}
+
+export interface LevelScoreRun {
+  id: number;
+  status: "pending" | "running" | "completed";
+  total_levels: number;
+  processed_levels: number;
+  total_combinations: number;
+  processed_combinations: number;
+  estimated_seconds?: number;
+  started_at: string;
+  finished_at?: string;
+  last_message?: string;
+  levels: LevelDescriptor[];
+}
+
+export interface LevelScoreRow {
+  level_id: string;
+  dimensions: string[];
+  cov_nivel: number;
+  n_combinacoes: number;
+  score_cov?: number;
+  score_complex?: number;
+  score_final?: number;
+}
+
 export type NotificationStatus = "running" | "completed" | "failed";
 
 export interface NotificationItem {
@@ -126,15 +157,15 @@ export interface NotificationItem {
 }
 
 export interface ScenarioFilterPayload {
-  diretor?: string;
-  sigla_uf?: string;
-  tipo_produto?: string;
-  familia?: string;
-  familia_producao?: string;
-  marca?: string;
-  situacao_lista?: string;
-  cod_produto?: string;
-  produto?: string;
+  diretor?: string[];
+  sigla_uf?: string[];
+  tipo_produto?: string[];
+  familia?: string[];
+  familia_producao?: string[];
+  marca?: string[];
+  situacao_lista?: string[];
+  cod_produto?: string[];
+  produto?: string[];
 }
 
 export interface CombinationFilterPayload extends ScenarioFilterPayload {
@@ -259,6 +290,9 @@ export interface ForecastState {
   preprocessSnapshot?: PreprocessSnapshot;
   combinationsSnapshot?: CombinationSnapshot[];
   loadingPreprocess: boolean;
+  levelScoreRun?: LevelScoreRun;
+  levelScoreResults: LevelScoreRow[];
+  loadingLevelScore: boolean;
   setActiveTab: (tab: string) => void;
   updateForecastSettings: (partial: Partial<ForecastSettings>) => void;
   updatePriceSettings: (partial: Partial<PriceSettings>) => void;
@@ -271,12 +305,16 @@ export interface ForecastState {
   fetchRecords: (filters?: number | Record<string, unknown>) => Promise<void>;
   wipeDataset: (confirmation: string) => Promise<void>;
   fetchSummary: () => Promise<void>;
-  fetchFilters: () => Promise<void>;
+  fetchFilters: (filters?: ScenarioFilterPayload) => Promise<void>;
   fetchNotifications: () => Promise<void>;
   fetchRecordsMeta: () => Promise<void>;
   fetchTypeProductBaseline: () => Promise<void>;
   fetchPreprocessSnapshot: (filters?: ScenarioFilterPayload) => Promise<void>;
   fetchCombinationsSnapshot: (filters?: CombinationFilterPayload) => Promise<void>;
+  startLevelScoreRun: (levels?: string[][]) => Promise<void>;
+  processLevelScoreChunk: (runId: number) => Promise<void>;
+  fetchLevelScoreStatus: (runId: number) => Promise<void>;
+  fetchLevelScoreResults: (runId: number) => Promise<void>;
   setPriceOverride: (type: string, year: number, value?: number) => void;
   resetPriceOverride: (type: string) => void;
   fetchAggregate: (metric: "volume" | "revenue", groupBy: string[]) => Promise<void>;

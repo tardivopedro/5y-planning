@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 
 from pydantic import BaseModel
@@ -107,7 +108,7 @@ class ScenarioSeries(BaseModel):
 
 
 class PreprocessResponse(BaseModel):
-  filters: Dict[str, Optional[str]]
+  filters: Dict[str, Optional[List[str]]]
   total_records: int
   scenarios: List[ScenarioSeries]
 
@@ -127,3 +128,34 @@ class CombinationRecord(BaseModel):
   last_year: int
   volume_total: float
   receita_total: float
+
+
+class LevelDescriptor(BaseModel):
+  level_id: str
+  dimensions: List[str]
+  combinations: int
+  status: str
+
+
+class LevelScoreRunPayload(BaseModel):
+  id: int
+  status: str
+  total_levels: int
+  processed_levels: int
+  total_combinations: int
+  processed_combinations: int
+  estimated_seconds: Optional[float]
+  started_at: datetime
+  finished_at: Optional[datetime]
+  last_message: Optional[str]
+  levels: List[LevelDescriptor]
+
+
+class LevelScoreRowPayload(BaseModel):
+  level_id: str
+  dimensions: List[str]
+  cov_nivel: float
+  n_combinacoes: int
+  score_cov: Optional[float]
+  score_complex: Optional[float]
+  score_final: Optional[float]

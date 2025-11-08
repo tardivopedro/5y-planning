@@ -12,8 +12,24 @@ import {
   TypeProductBaseline,
   UploadSummary,
   RecordsMeta,
-  NotificationItem
+  NotificationItem,
+  LevelScoreRun,
+  LevelScoreRow
 } from "../types/forecast";
+
+function appendFilterParams(params: URLSearchParams, filters?: ScenarioFilterPayload) {
+  if (!filters) return;
+  Object.entries(filters).forEach(([key, value]) => {
+    if (!value) return;
+    if (Array.isArray(value)) {
+      value.forEach((item) => {
+        if (item) params.append(key, item);
+      });
+    } else if (value) {
+      params.append(key, value as string);
+    }
+  });
+}
 
 interface UploadResponse {
   inserted_rows: number;
@@ -133,8 +149,12 @@ export async function fetchRecordsMeta(): Promise<RecordsMeta> {
   return httpRequest<RecordsMeta>(url);
 }
 
-export async function fetchFilters(): Promise<FilterOptions> {
-  const url = await getApiUrl("/upload/records/filters");
+export async function fetchFilters(filters?: ScenarioFilterPayload): Promise<FilterOptions> {
+  const params = new URLSearchParams();
+  appendFilterParams(params, filters);
+  const query = params.toString();
+  const path = query ? `/upload/records/filters?${query}` : "/upload/records/filters";
+  const url = await getApiUrl(path);
   return httpRequest<FilterOptions>(url);
 }
 
@@ -167,9 +187,7 @@ export async function fetchPreprocessSnapshot(
   filters: ScenarioFilterPayload = {}
 ): Promise<PreprocessSnapshot> {
   const params = new URLSearchParams();
-  Object.entries(filters).forEach(([key, value]) => {
-    if (value) params.set(key, value);
-  });
+  appendFilterParams(params, filters);
   const query = params.toString();
   const path = query ? `/analytics/preprocess?${query}` : "/analytics/preprocess";
   const url = await getApiUrl(path);
@@ -184,12 +202,34 @@ export async function fetchCombinationsSnapshot(
   if (limit) params.set("limit", String(limit));
   if (typeof ano === "number") params.set("ano", String(ano));
 
-  Object.entries(dimensionFilters).forEach(([key, value]) => {
-    if (value) params.set(key, value);
-  });
+  appendFilterParams(params, dimensionFilters);
 
   const query = params.toString();
   const path = query ? `/analytics/combinations?${query}` : "/analytics/combinations";
   const url = await getApiUrl(path);
   return httpRequest<CombinationSnapshot[]>(url);
+}
+
+export async function startLevelScoreRun(levels?: string[][]): Promise<LevelScoreRun> {
+  const url = await getApiUrl("/analytics/level-score/run");
+  return httpRequest<LevelScoreRun>(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ levels })
+  });
+}
+
+export async function processLevelScoreChunk(runId: number): Promise<LevelScoreRun> {
+  const url = await getApiUrl(`/analytics/level-score/run/${runId}/next`);
+  return httpRequest<LevelScoreRun>(url, { method: "POST" });
+}
+
+export async function fetchLevelScoreStatus(runId: number): Promise<LevelScoreRun> {
+  const url = await getApiUrl(`/analytics/level-score/run/${runId}`);
+  return httpRequest<LevelScoreRun>(url);
+}
+
+export async function fetchLevelScoreResults(runId: number): Promise<LevelScoreRow[]> {
+  const url = await getApiUrl(`/analytics/level-score/results/${runId}`);
+  return httpRequest<LevelScoreRow[]>(url);
 }

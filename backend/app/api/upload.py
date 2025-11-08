@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import distinct, func
 from sqlmodel import select
@@ -15,10 +15,17 @@ from app.schemas.planning import (
   UploadSummary
 )
 from app.services.notification_service import notification_center
+from app.services.preprocess_service import apply_filters
 from app.services.upload_service import ingest_file, wipe_all_records
 
 router = APIRouter()
 
+
+def _normalize_multi(values: list[str] | None) -> list[str] | None:
+  if not values:
+    return None
+  normalized = [value for value in values if value]
+  return normalized or None
 
 @router.post("/", response_model=UploadSummary)
 @router.post("", response_model=UploadSummary)  # Aceita /upload e /upload/
@@ -97,10 +104,38 @@ def get_records_meta(session=Depends(get_session)):
 
 
 @router.get("/records/filters", response_model=FilterOptions)
-def get_filter_options():
+def get_filter_options(
+  diretor: list[str] | None = Query(default=None),
+  sigla_uf: list[str] | None = Query(default=None),
+  tipo_produto: list[str] | None = Query(default=None),
+  familia: list[str] | None = Query(default=None),
+  familia_producao: list[str] | None = Query(default=None),
+  marca: list[str] | None = Query(default=None),
+  situacao_lista: list[str] | None = Query(default=None),
+  cod_produto: list[str] | None = Query(default=None),
+  produto: list[str] | None = Query(default=None)
+):
+  applied_filters = {
+    "diretor": _normalize_multi(diretor),
+    "sigla_uf": _normalize_multi(sigla_uf),
+    "tipo_produto": _normalize_multi(tipo_produto),
+    "familia": _normalize_multi(familia),
+    "familia_producao": _normalize_multi(familia_producao),
+    "marca": _normalize_multi(marca),
+    "situacao_lista": _normalize_multi(situacao_lista),
+    "cod_produto": _normalize_multi(cod_produto),
+    "produto": _normalize_multi(produto)
+  }
+
   with session_context() as session:
-    def fetch_distinct(field):
-      statement = select(distinct(field)).order_by(field)
+    def fetch_distinct(field_name: str, column):
+      filters_except_current = {
+        key: value
+        for key, value in applied_filters.items()
+        if key != field_name
+      }
+      statement = select(distinct(column)).order_by(column)
+      statement = apply_filters(statement, filters_except_current)
       values = []
       for row in session.exec(statement).all():
         value = row[0] if isinstance(row, (tuple, list)) else row
@@ -109,16 +144,16 @@ def get_filter_options():
       return values
 
     return FilterOptions(
-      anos=fetch_distinct(PlanningRecord.ano),
-      diretores=fetch_distinct(PlanningRecord.diretor),
-      ufs=fetch_distinct(PlanningRecord.sigla_uf),
-      tipos_produto=fetch_distinct(PlanningRecord.tipo_produto),
-      familias=fetch_distinct(PlanningRecord.familia),
-      familias_producao=fetch_distinct(PlanningRecord.familia_producao),
-      marcas=fetch_distinct(PlanningRecord.marca),
-      situacoes=fetch_distinct(PlanningRecord.situacao_lista),
-      codigos=fetch_distinct(PlanningRecord.cod_produto),
-      produtos=fetch_distinct(PlanningRecord.produto)
+      anos=fetch_distinct("ano", PlanningRecord.ano),
+      diretores=fetch_distinct("diretor", PlanningRecord.diretor),
+      ufs=fetch_distinct("sigla_uf", PlanningRecord.sigla_uf),
+      tipos_produto=fetch_distinct("tipo_produto", PlanningRecord.tipo_produto),
+      familias=fetch_distinct("familia", PlanningRecord.familia),
+      familias_producao=fetch_distinct("familia_producao", PlanningRecord.familia_producao),
+      marcas=fetch_distinct("marca", PlanningRecord.marca),
+      situacoes=fetch_distinct("situacao_lista", PlanningRecord.situacao_lista),
+      codigos=fetch_distinct("cod_produto", PlanningRecord.cod_produto),
+      produtos=fetch_distinct("produto", PlanningRecord.produto)
     )
 
 

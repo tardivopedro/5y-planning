@@ -1,4 +1,8 @@
+import json
+from typing import List
+
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel
 from sqlalchemy import and_, func, select
 
 from app.db.session import get_session
@@ -7,6 +11,9 @@ from app.schemas.analytics import (
   AggregateResponse,
   CombinationRecord,
   ForecastResponse,
+  LevelDescriptor,
+  LevelScoreRowPayload,
+  LevelScoreRunPayload,
   PreprocessResponse,
   ScenarioSeries,
   SummaryResponse,
@@ -23,6 +30,11 @@ from app.services.preprocess_service import (
   generate_preprocess_payload,
   list_combinations_snapshot
 )
+from app.services import level_score_service
+
+
+class LevelScoreRunRequest(BaseModel):
+  levels: List[List[str]] | None = None
 
 router = APIRouter()
 
@@ -64,30 +76,36 @@ def forecast_view(
     raise HTTPException(status_code=400, detail=str(exc)) from exc
   return data
 
+def _normalize_multi(values: list[str] | None) -> list[str] | None:
+  if not values:
+    return None
+  normalized = [value for value in values if value]
+  return normalized or None
+
 
 @router.get("/preprocess", response_model=PreprocessResponse)
 def preprocess_view(
-  diretor: str | None = None,
-  sigla_uf: str | None = None,
-  tipo_produto: str | None = None,
-  familia: str | None = None,
-  familia_producao: str | None = None,
-  marca: str | None = None,
-  situacao_lista: str | None = None,
-  cod_produto: str | None = None,
-  produto: str | None = None,
+  diretor: list[str] | None = Query(default=None),
+  sigla_uf: list[str] | None = Query(default=None),
+  tipo_produto: list[str] | None = Query(default=None),
+  familia: list[str] | None = Query(default=None),
+  familia_producao: list[str] | None = Query(default=None),
+  marca: list[str] | None = Query(default=None),
+  situacao_lista: list[str] | None = Query(default=None),
+  cod_produto: list[str] | None = Query(default=None),
+  produto: list[str] | None = Query(default=None),
   session=Depends(get_session)
 ):
   filters = {
-    "diretor": diretor,
-    "sigla_uf": sigla_uf,
-    "tipo_produto": tipo_produto,
-    "familia": familia,
-    "familia_producao": familia_producao,
-    "marca": marca,
-    "situacao_lista": situacao_lista,
-    "cod_produto": cod_produto,
-    "produto": produto
+    "diretor": _normalize_multi(diretor),
+    "sigla_uf": _normalize_multi(sigla_uf),
+    "tipo_produto": _normalize_multi(tipo_produto),
+    "familia": _normalize_multi(familia),
+    "familia_producao": _normalize_multi(familia_producao),
+    "marca": _normalize_multi(marca),
+    "situacao_lista": _normalize_multi(situacao_lista),
+    "cod_produto": _normalize_multi(cod_produto),
+    "produto": _normalize_multi(produto)
   }
 
   total_records, scenario_payload = generate_preprocess_payload(session, filters)
@@ -107,26 +125,30 @@ def preprocess_view(
 def combinations_view(
   limit: int = 500,
   ano: int | None = None,
-  diretor: str | None = None,
-  sigla_uf: str | None = None,
-  tipo_produto: str | None = None,
-  familia: str | None = None,
-  familia_producao: str | None = None,
-  marca: str | None = None,
-  cod_produto: str | None = None,
+  diretor: list[str] | None = Query(default=None),
+  sigla_uf: list[str] | None = Query(default=None),
+  tipo_produto: list[str] | None = Query(default=None),
+  familia: list[str] | None = Query(default=None),
+  familia_producao: list[str] | None = Query(default=None),
+  marca: list[str] | None = Query(default=None),
+  cod_produto: list[str] | None = Query(default=None),
   session=Depends(get_session)
 ):
+  filters = {
+    "diretor": _normalize_multi(diretor),
+    "sigla_uf": _normalize_multi(sigla_uf),
+    "tipo_produto": _normalize_multi(tipo_produto),
+    "familia": _normalize_multi(familia),
+    "familia_producao": _normalize_multi(familia_producao),
+    "marca": _normalize_multi(marca),
+    "cod_produto": _normalize_multi(cod_produto)
+  }
+
   combinations = list_combinations_snapshot(
     session,
     limit=limit,
     ano=ano,
-    diretor=diretor,
-    sigla_uf=sigla_uf,
-    tipo_produto=tipo_produto,
-    familia=familia,
-    familia_producao=familia_producao,
-    marca=marca,
-    cod_produto=cod_produto
+    filters=filters
   )
 
   return [
@@ -148,3 +170,78 @@ def combinations_view(
     )
     for item in combinations
   ]
+
+
+def _run_to_payload(run) -> LevelScoreRunPayload:
+  levels_info = level_score_service.get_levels_info(run)
+  descriptors = []
+  for idx, info in enumerate(levels_info):
+    descriptors.append(
+      LevelDescriptor(
+        level_id=info.level_id,
+        dimensions=info.dimensions,
+        combinations=info.combinations,
+        status="completed" if idx < run.processed_levels else "pending"
+      )
+    )
+  return LevelScoreRunPayload(
+    id=run.id,
+    status=run.status,
+    total_levels=run.total_levels,
+    processed_levels=run.processed_levels,
+    total_combinations=run.total_combinations,
+    processed_combinations=run.processed_combinations,
+    estimated_seconds=run.estimated_seconds,
+    started_at=run.started_at,
+    finished_at=run.finished_at,
+    last_message=run.last_message,
+    levels=descriptors
+  )
+
+
+@router.post("/level-score/run", response_model=LevelScoreRunPayload)
+def start_level_score_run(payload: LevelScoreRunRequest | None = None):
+  active_run = level_score_service.get_active_run()
+  if active_run:
+    raise HTTPException(status_code=400, detail="Já existe um cálculo em andamento.")
+  run = level_score_service.start_level_score_run(payload.levels if payload else None)
+  return _run_to_payload(run)
+
+
+@router.post("/level-score/run/{run_id}/next", response_model=LevelScoreRunPayload)
+def process_next_level(run_id: int):
+  try:
+    run = level_score_service.process_next_level(run_id)
+  except ValueError as exc:
+    raise HTTPException(status_code=404, detail=str(exc)) from exc
+  return _run_to_payload(run)
+
+
+@router.get("/level-score/run/{run_id}", response_model=LevelScoreRunPayload)
+def get_level_score_run(run_id: int):
+  run = level_score_service.get_run(run_id)
+  if not run:
+    raise HTTPException(status_code=404, detail="Execução não encontrada")
+  return _run_to_payload(run)
+
+
+@router.get("/level-score/results/{run_id}", response_model=list[LevelScoreRowPayload])
+def get_level_score_results(run_id: int):
+  run = level_score_service.get_run(run_id)
+  if not run:
+    raise HTTPException(status_code=404, detail="Execução não encontrada")
+  rows = level_score_service.get_run_results(run_id)
+  result = []
+  for row in rows:
+    result.append(
+      LevelScoreRowPayload(
+        level_id=row.level_id,
+        dimensions=json.loads(row.dimensions_json),
+        cov_nivel=row.cov_nivel,
+        n_combinacoes=row.n_combinacoes,
+        score_cov=row.score_cov,
+        score_complex=row.score_complex,
+        score_final=row.score_final
+      )
+    )
+  return result

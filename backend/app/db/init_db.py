@@ -1,7 +1,7 @@
 from sqlmodel import SQLModel
 
 from app.db.session import engine
-from app.models import planning_record, planning_combination  # noqa: F401  # ensure models imported
+from app.models import planning_record, planning_combination, level_score  # noqa: F401  # ensure models imported
 
 
 def init_db() -> None:
